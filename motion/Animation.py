@@ -142,18 +142,18 @@ class Animation:
     
 def transforms_local(anim):
     """
-    Computes Animation Local Transforms
+    Computes the Animation Local Transforms
     
-    As well as a number of other uses this can
-    be used to compute global joint transforms,
-    which in turn can be used to compete global
+    As well as a number of other uses such as
+    -used to compute global joint transforms,
+    -used to compete global
     joint positions
     
     Parameters
     ----------
     
     anim : Animation
-        Input animation
+           Input animation
         
     Returns
     -------
