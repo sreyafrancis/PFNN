@@ -2,6 +2,7 @@ import sys
 import numpy as np
 import theano
 import theano.tensor as T
+import skeletondef as skd
 theano.config.allow_gc = True
 
 sys.path.append('./nn')
@@ -29,7 +30,7 @@ print(X.shape, Y.shape)
 Xmean, Xstd = X.mean(axis=0), X.std(axis=0)
 Ymean, Ystd = Y.mean(axis=0), Y.std(axis=0)
 
-j = 31
+j = skd.JOINT_NUM
 w = ((60*2)//10)
 
 Xstd[w*0:w* 1] = Xstd[w*0:w* 1].mean() # Trajectory Past Positions
@@ -40,14 +41,7 @@ Xstd[w*4:w*10] = Xstd[w*4:w*10].mean() # Trajectory Gait
 
 """ Mask Out Unused Joints in Input """
 
-joint_weights = np.array([
-    1,
-    1e-10, 1, 1, 1, 1,
-    1e-10, 1, 1, 1, 1,
-    1e-10, 1, 1,
-    1e-10, 1, 1,
-    1e-10, 1, 1, 1, 1e-10, 1e-10, 1e-10,
-    1e-10, 1, 1, 1, 1e-10, 1e-10, 1e-10]).repeat(3)
+joint_weights = np.array(skd.JOINT_WEIGHTS).repeat(3)
 
 Xstd[w*10+j*3*0:w*10+j*3*1] = Xstd[w*10+j*3*0:w*10+j*3*1].mean() / (joint_weights * 0.1) # Pos
 Xstd[w*10+j*3*1:w*10+j*3*2] = Xstd[w*10+j*3*1:w*10+j*3*2].mean() / (joint_weights * 0.1) # Vel
