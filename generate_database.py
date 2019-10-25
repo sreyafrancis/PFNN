@@ -4,6 +4,8 @@ import numpy as np
 import scipy.interpolate as interpolate
 import scipy.ndimage.filters as filters
 
+import skeletondef as skd
+
 sys.path.append('./motion')
 
 import BVH as BVH
@@ -15,9 +17,10 @@ from Learning import RBF
 """ Options """
 
 rng = np.random.RandomState(1234)
-to_meters = 5.6444
+to_meters = skd.JOINT_SCALE
 window = 60
-njoints = 31
+njoints = skd.JOINT_NUM
+prev_rotations = None
 
 """ Data """
 
@@ -110,6 +113,58 @@ data_terrain = [
 ]
 
 #data_terrain = ['./data/animations/LocomotionFlat01_000.bvh']
+""" filter out joints """
+def filter_joints(anim, names):
+    indices = []
+    for j in range(len(skd.FILTER_OUT)):
+        for i in range(len(names)):
+            if skd.FILTER_OUT[j] in names[i]:
+                indices.append(i)
+    indices = sorted(indices, reverse=True)
+    
+    #detect in-middle bones
+    # for j in indices:
+        # print("delete:" + names[j])
+        # if j in anim.parents:
+            # print("%s has children!" % names[j])
+    
+    """
+    #note: if middle joints are filtered out, we need re-calc local xforms
+    #now there's not any, so skip
+    #cache global xform
+    global_xforms = Animation.transforms_global(anim)
+    global_xforms = np.delete(global_xforms, indices)
+    local_xforms = np.zeros(global_xforms.shape)
+    """
+    
+    anim2 = anim.copy()
+    anim2.orients = np.delete(anim2.orients, indices, 0)
+    anim2.offsets = np.delete(anim2.offsets, indices, 0)
+    anim2.parents = np.delete(anim2.parents, indices, 0)
+    anim2.rotations = Quaternions(np.delete(anim2.rotations, indices, 1))
+    anim2.positions = np.delete(anim2.positions, indices, 1)
+
+    names2 = names.copy()
+    for i in indices:
+        del names2[i]
+        for j in range(len(anim2.parents)):
+            if anim2.parents[j] >= i:
+                anim2.parents[j] -= 1
+    
+    """
+    #calc local xform based on stripped global xform
+    invf = lambda x : Animation.transforms_inv(x)
+    inv_xforms = list(map(invf, global_xforms))
+    
+    for i in range(1, anim.shape[1]):
+        local_xforms[:,i] = Animation.transforms_multiply(inv_xforms[:,anim.parents[i]], global_xforms[:,i])
+    
+    anim.rotations = Quaternions.from_transforms(local_xforms)
+    anim.positions = local_xforms[:,:,:3,3] / local_xforms[:,:,3:,3]
+    """
+    
+    return anim2, names2
+
 
 """ Load Terrain Patches """
 
@@ -128,10 +183,9 @@ def process_data(anim, phase, gait, type='flat'):
     
     """ Extract Forward Direction """
     
-    sdr_l, sdr_r, hip_l, hip_r = 18, 25, 2, 7
     across = (
-        (global_positions[:,sdr_l] - global_positions[:,sdr_r]) + 
-        (global_positions[:,hip_l] - global_positions[:,hip_r]))
+        (global_positions[:,skd.SDR_L] - global_positions[:,skd.SDR_R]) + 
+        (global_positions[:,skd.HIP_L] - global_positions[:,skd.HIP_R]))
     across = across / np.sqrt((across**2).sum(axis=-1))[...,np.newaxis]
     
     """ Smooth Forward Direction """
@@ -152,14 +206,16 @@ def process_data(anim, phase, gait, type='flat'):
     
     local_positions = root_rotation[:-1] * local_positions[:-1]
     local_velocities = root_rotation[:-1] *  (global_positions[1:] - global_positions[:-1])
-    local_rotations = abs((root_rotation[:-1] * global_rotations[:-1])).log()
+    local_rotations = ((root_rotation[:-1] * global_rotations[:-1]))
+    #print('hips (w,x,y,z)=' + str(abs((root_rotation[:-1] * global_rotations[:-1]))[0][0]))
+    #print('hips log(w,x,y,z)=' + str(local_rotations[0][0]))
     
     root_velocity = root_rotation[:-1] * (global_positions[1:,0:1] - global_positions[:-1,0:1])
     root_rvelocity = Pivots.from_quaternions(root_rotation[1:] * -root_rotation[:-1]).ps
     
     """ Foot Contacts """
     
-    fid_l, fid_r = np.array([4,5]), np.array([9,10])
+    fid_l, fid_r = np.array(skd.FOOT_L), np.array(skd.FOOT_R)
     velfactor = np.array([0.02, 0.02])
     
     feet_l_x = (global_positions[1:,fid_l,0] - global_positions[:-1,fid_l,0])**2
@@ -181,9 +237,14 @@ def process_data(anim, phase, gait, type='flat'):
     
     if type == 'flat':
         crouch_low, crouch_high = 80, 130
-        head = 16
+        head = skd.HEAD
         gait[:-1,3] = 1 - np.clip((global_positions[:-1,head,1] - 80) / (130 - 80), 0, 1)
         gait[-1,3] = gait[-2,3]
+        
+    """ Load prev rotations across files (poles maybe adjusted) """
+    global prev_rotations
+    if prev_rotations is None:
+        prev_rotations = local_rotations[window-1]
 
     """ Start Windows """
     
@@ -196,6 +257,38 @@ def process_data(anim, phase, gait, type='flat'):
         rootgait = gait[i-window:i+window:10]
         
         Pc.append(phase[i])
+        
+        """ Unify Quaternions To Single Pole """
+        """ Between Prev vs Next Keys """
+        
+        """ [Grassia1998]:
+            The procedure followed by Yahia [13] of limiting the range of the log map to |log(r)| ≤ π does not suffice.
+            A log mapping that does guarantee the geodesic approximation picks the mapping for each successive key that
+            minimizes the Euclidean distance to the mapping of the previous key.
+            Given such a log map that considers the previous mapping when calculating the current mapping, the results of interpolating
+            in S3 and R3 may be visually indistinguishable for many applications, including keyframing.  """
+        antipode = prev_rotations.dot(local_rotations[i]) < 0
+        local_rotations[i][antipode] = Quaternions(-local_rotations[i][antipode].qs)
+        prev_rotations = local_rotations[i]
+
+        # print("*********************************")
+        # print(i)
+        # #print(*antipode, sep=' ')
+        # for j in range(antipode.size):
+        #     print("%6d " % (j+1), end='' if j < antipode.size-1 else '\n')
+        # for j in range(antipode.size):
+        #     print("%6s " % antipode[j], end='' if j < antipode.size-1 else '\n')
+        # for j in range(antipode.size):
+        #     print("%06.3f " % local_rotations[i-1][j].reals, end='' if j < antipode.size-1 else '\n')
+        # for j in range(antipode.size):
+        #     print("%06.3f " % local_rotations[i][j].reals, end='' if j < antipode.size-1 else '\n')
+            
+        # print(*local_rotations[i-1][antipode], sep=' ')
+        # print(*local_rotations[i][antipode], sep=' ')
+
+        # # print("*********************************")
+        # # print(local_rotations[i][antipode])
+        # # print("*********************************")
         
         Xc.append(np.hstack([
                 rootposs[:,0].ravel(), rootposs[:,2].ravel(), # Trajectory Pos
@@ -220,7 +313,7 @@ def process_data(anim, phase, gait, type='flat'):
                 rootdirs_next[:,0].ravel(), rootdirs_next[:,2].ravel(), # Next Trajectory Dir
                 local_positions[i].ravel(),  # Joint Pos
                 local_velocities[i].ravel(), # Joint Vel
-                local_rotations[i].ravel()   # Joint Rot
+                local_rotations[i].log().ravel() # Joint Rot
                 ]))
                                                 
     return np.array(Pc), np.array(Xc), np.array(Yc)
@@ -257,10 +350,9 @@ def process_heights(anim, nsamples=10, type='flat'):
     
     """ Extract Forward Direction """
     
-    sdr_l, sdr_r, hip_l, hip_r = 18, 25, 2, 7
     across = (
-        (global_positions[:,sdr_l] - global_positions[:,sdr_r]) + 
-        (global_positions[:,hip_l] - global_positions[:,hip_r]))
+        (global_positions[:,skd.SDR_L] - global_positions[:,skd.SDR_R]) + 
+        (global_positions[:,skd.HIP_L] - global_positions[:,skd.HIP_R]))
     across = across / np.sqrt((across**2).sum(axis=-1))[...,np.newaxis]
     
     """ Smooth Forward Direction """
@@ -275,7 +367,7 @@ def process_heights(anim, nsamples=10, type='flat'):
 
     """ Foot Contacts """
     
-    fid_l, fid_r = np.array([4,5]), np.array([9,10])
+    fid_l, fid_r = np.array(skd.FOOT_L), np.array(skd.FOOT_R)
     velfactor = np.array([0.02, 0.02])
     
     feet_l_x = (global_positions[1:,fid_l,0] - global_positions[:-1,fid_l,0])**2
@@ -314,13 +406,11 @@ def process_heights(anim, nsamples=10, type='flat'):
     ], axis=0)
     
     """ Down Locations """
-    
     feet_down_xz = np.concatenate([feet_down[:,0:1], feet_down[:,2:3]], axis=-1)
     feet_down_xz_mean = feet_down_xz.mean(axis=0)
     feet_down_y = feet_down[:,1:2]
     feet_down_y_mean = feet_down_y.mean(axis=0)
     feet_down_y_std  = feet_down_y.std(axis=0)
-        
     """ Up Locations """
         
     feet_up_xz = np.concatenate([feet_up[:,0:1], feet_up[:,2:3]], axis=-1)
@@ -408,9 +498,8 @@ def process_heights(anim, nsamples=10, type='flat'):
             terr_down_y_mean[terr_ids][:,np.newaxis]) + feet_down_y_mean)
         
         """ Terrain Fit Editing """
-        
         terr_residuals = feet_down_y - terr_basic_func(feet_down_xz)
-        terr_fine_func = [RBF(smooth=0.1, function='linear') for _ in range(nsamples)]
+        terr_fine_func = [RBF(smooth=0.1, function='linear', epsilon=1e-10) for _ in range(nsamples)]
         for i in range(nsamples): terr_fine_func[i].fit(feet_down_xz, terr_residuals[i])
         terr_func = lambda Xp: (terr_basic_func(Xp) + np.array([ff(Xp) for ff in terr_fine_func]))
         
@@ -469,10 +558,26 @@ for data in data_terrain:
     """ Load Data """
     
     anim, names, _ = BVH.load(data)
+    anim2, names2 = filter_joints(anim, names)
+	
+    """ Dump joint lists"""
+    #BVH.save("stripped.bvh", anim, names, 1.0/120.0, 'zyx', True, True)
+    
+    with open("jointlist.txt", "w") as f:
+        for j in range(len(names2)):
+            jname = names2[j]
+            p = anim.parents[names.index(jname)]
+            while p!=-1:
+                jname = names[p] + "/" + jname
+                p = anim.parents[p]
+            f.writelines("\"" + jname + "\",\n")
+
+    anim = anim2
+    names = names2
+    
     anim.offsets *= to_meters
     anim.positions *= to_meters
     anim = anim[::2]
-
     """ Load Phase / Gait """
     
     phase = np.loadtxt(data.replace('.bvh', '.phase'))[::2]
@@ -541,6 +646,8 @@ print('Total Clips: %i' % len(X))
 print('Shortest Clip: %i' % min(map(len,X)))
 print('Longest Clip: %i' % max(map(len,X)))
 print('Average Clip: %i' % np.mean(list(map(len,X))))
+#print("YP0: %3.3f %3.3f %3.3f" %(float(Y[0][0][32]), float(Y[0][0][33]), float(Y[0][0][34])) )
+#print("YR0: %3.4f %3.4f %3.4f" %(float(Y[0][0][218]), float(Y[0][0][219]), float(Y[0][0][220])) )
 
 """ Merge Clips """
 
