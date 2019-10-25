@@ -140,7 +140,7 @@ class Quaternions:
         return Quaternions(self.qs * np.array([[1, -1, -1, -1]]))
     
     def __abs__(self):
-        """ Unify Quaternions To Single Pole """
+        """ Limit angles to 180 """
         qabs = self.normalized().copy()
         top = np.sum(( qabs.qs) * np.array([1,0,0,0]), axis=-1)
         bot = np.sum((-qabs.qs) * np.array([1,0,0,0]), axis=-1)
@@ -175,7 +175,7 @@ class Quaternions:
         return Quaternions(self.qs / self.lengths[...,np.newaxis])
     
     def log(self):
-        norm = abs(self.normalized())
+        norm = self.normalized()
         imgs = norm.imaginaries
         lens = np.sqrt(np.sum(imgs**2, axis=-1))
         lens = np.arctan2(lens, norm.reals) / (lens + 1e-10)

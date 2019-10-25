@@ -206,7 +206,7 @@ def process_data(anim, phase, gait, type='flat'):
     
     local_positions = root_rotation[:-1] * local_positions[:-1]
     local_velocities = root_rotation[:-1] *  (global_positions[1:] - global_positions[:-1])
-    local_rotations = abs((root_rotation[:-1] * global_rotations[:-1])).log()
+    local_rotations = ((root_rotation[:-1] * global_rotations[:-1]))
     #print('hips (w,x,y,z)=' + str(abs((root_rotation[:-1] * global_rotations[:-1]))[0][0]))
     #print('hips log(w,x,y,z)=' + str(local_rotations[0][0]))
     
@@ -253,6 +253,37 @@ def process_data(anim, phase, gait, type='flat'):
         
         Pc.append(phase[i])
         
+        """ Unify Quaternions To Single Pole """
+        """ Between Prev vs Next Keys """
+        
+        """ [Grassia1998]:
+            The procedure followed by Yahia [13] of limiting the range of the log map to |log(r)| ¡Ü ¦Ð does not suffice.
+            A log mapping that does guarantee the geodesic approximation picks the mapping for each successive key that
+            minimizes the Euclidean distance to the mapping of the previous key.
+            Given such a log map that considers the previous mapping when calculating the current mapping, the results of interpolating
+            in S3 and R3 may be visually indistinguishable for many applications, including keyframing.  """
+        antipode = np.sum(local_rotations[i-1].qs * local_rotations[i].qs, -1) < 0
+        local_rotations[i][antipode] = Quaternions(-local_rotations[i][antipode].qs)
+
+        # print("*********************************")
+        # print(i)
+        # #print(*antipode, sep=' ')
+        # for j in range(antipode.size):
+        #     print("%6d " % (j+1), end='' if j < antipode.size-1 else '\n')
+        # for j in range(antipode.size):
+        #     print("%6s " % antipode[j], end='' if j < antipode.size-1 else '\n')
+        # for j in range(antipode.size):
+        #     print("%06.3f " % local_rotations[i-1][j].reals, end='' if j < antipode.size-1 else '\n')
+        # for j in range(antipode.size):
+        #     print("%06.3f " % local_rotations[i][j].reals, end='' if j < antipode.size-1 else '\n')
+            
+        # print(*local_rotations[i-1][antipode], sep=' ')
+        # print(*local_rotations[i][antipode], sep=' ')
+
+        # # print("*********************************")
+        # # print(local_rotations[i][antipode])
+        # # print("*********************************")
+        
         Xc.append(np.hstack([
                 rootposs[:,0].ravel(), rootposs[:,2].ravel(), # Trajectory Pos
                 rootdirs[:,0].ravel(), rootdirs[:,2].ravel(), # Trajectory Dir
@@ -276,7 +307,7 @@ def process_data(anim, phase, gait, type='flat'):
                 rootdirs_next[:,0].ravel(), rootdirs_next[:,2].ravel(), # Next Trajectory Dir
                 local_positions[i].ravel(),  # Joint Pos
                 local_velocities[i].ravel(), # Joint Vel
-                local_rotations[i].ravel()   # Joint Rot
+                local_rotations[i].log().ravel() # Joint Rot
                 ]))
                                                 
     return np.array(Pc), np.array(Xc), np.array(Yc)
