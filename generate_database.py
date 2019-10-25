@@ -20,6 +20,7 @@ rng = np.random.RandomState(1234)
 to_meters = skd.JOINT_SCALE
 window = 60
 njoints = skd.JOINT_NUM
+prev_rotations = None
 
 """ Data """
 
@@ -112,7 +113,6 @@ data_terrain = [
 ]
 
 #data_terrain = ['./data/animations/LocomotionFlat01_000.bvh']
-
 """ filter out joints """
 def filter_joints(anim, names):
     indices = []
@@ -240,6 +240,11 @@ def process_data(anim, phase, gait, type='flat'):
         head = skd.HEAD
         gait[:-1,3] = 1 - np.clip((global_positions[:-1,head,1] - 80) / (130 - 80), 0, 1)
         gait[-1,3] = gait[-2,3]
+        
+    """ Load prev rotations across files (poles maybe adjusted) """
+    global prev_rotations
+    if prev_rotations is None:
+        prev_rotations = local_rotations[window-1]
 
     """ Start Windows """
     
@@ -257,13 +262,14 @@ def process_data(anim, phase, gait, type='flat'):
         """ Between Prev vs Next Keys """
         
         """ [Grassia1998]:
-            The procedure followed by Yahia [13] of limiting the range of the log map to |log(r)| ¡Ü ¦Ð does not suffice.
+            The procedure followed by Yahia [13] of limiting the range of the log map to |log(r)| â‰¤ Ï€ does not suffice.
             A log mapping that does guarantee the geodesic approximation picks the mapping for each successive key that
             minimizes the Euclidean distance to the mapping of the previous key.
             Given such a log map that considers the previous mapping when calculating the current mapping, the results of interpolating
             in S3 and R3 may be visually indistinguishable for many applications, including keyframing.  """
-        antipode = np.sum(local_rotations[i-1].qs * local_rotations[i].qs, -1) < 0
+        antipode = prev_rotations.dot(local_rotations[i]) < 0
         local_rotations[i][antipode] = Quaternions(-local_rotations[i][antipode].qs)
+        prev_rotations = local_rotations[i]
 
         # print("*********************************")
         # print(i)
