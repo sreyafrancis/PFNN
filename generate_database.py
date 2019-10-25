@@ -122,6 +122,12 @@ def filter_joints(anim, names):
                 indices.append(i)
     indices = sorted(indices, reverse=True)
     
+    #detect in-middle bones
+    # for j in indices:
+        # print("delete:" + names[j])
+        # if j in anim.parents:
+            # print("%s has children!" % names[j])
+    
     """
     #note: if middle joints are filtered out, we need re-calc local xforms
     #now there's not any, so skip
@@ -131,18 +137,19 @@ def filter_joints(anim, names):
     local_xforms = np.zeros(global_xforms.shape)
     """
     
-    anim.orients = np.delete(anim.orients, indices) #incorrect but not used. 
-    anim.offsets = np.delete(anim.offsets, indices)
-    anim.parents = np.delete(anim.parents, indices)
-    anim.rotations = Quaternions(np.delete(anim.rotations, indices, 1))
-    anim.positions = np.delete(anim.positions, indices, 1)
+    anim2 = anim.copy()
+    anim2.orients = np.delete(anim2.orients, indices, 0)
+    anim2.offsets = np.delete(anim2.offsets, indices, 0)
+    anim2.parents = np.delete(anim2.parents, indices, 0)
+    anim2.rotations = Quaternions(np.delete(anim2.rotations, indices, 1))
+    anim2.positions = np.delete(anim2.positions, indices, 1)
 
     names2 = names.copy()
     for i in indices:
         del names2[i]
-        for j in range(len(anim.parents)):
-            if anim.parents[j] >= i:
-                anim.parents[j] -= 1
+        for j in range(len(anim2.parents)):
+            if anim2.parents[j] >= i:
+                anim2.parents[j] -= 1
     
     """
     #calc local xform based on stripped global xform
@@ -156,7 +163,7 @@ def filter_joints(anim, names):
     anim.positions = local_xforms[:,:,:3,3] / local_xforms[:,:,3:,3]
     """
     
-    return anim, names2
+    return anim2, names2
 
 
 """ Load Terrain Patches """
@@ -514,22 +521,26 @@ for data in data_terrain:
     """ Load Data """
     
     anim, names, _ = BVH.load(data)
-    anim, names = filter_joints(anim, names)
-    anim.offsets *= to_meters
-    anim.positions *= to_meters
-    anim = anim[::2]
+    anim2, names2 = filter_joints(anim, names)
 	
     """ Dump joint lists"""
-    #print(names)
+    #BVH.save("stripped.bvh", anim, names, 1.0/120.0, 'zyx', True, True)
+    
     with open("jointlist.txt", "w") as f:
-        for j in range(len(names)):
-            jname = names[j]
-            p = anim.parents[j]
+        for j in range(len(names2)):
+            jname = names2[j]
+            p = anim.parents[names.index(jname)]
             while p!=-1:
                 jname = names[p] + "/" + jname
                 p = anim.parents[p]
             f.writelines("\"" + jname + "\",\n")
 
+    anim = anim2
+    names = names2
+    
+    anim.offsets *= to_meters
+    anim.positions *= to_meters
+    anim = anim[::2]
     """ Load Phase / Gait """
     
     phase = np.loadtxt(data.replace('.bvh', '.phase'))[::2]
