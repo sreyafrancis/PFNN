@@ -1,3 +1,4 @@
+"""
 ROOT Hips
 JOINT LHipJoint
 	JOINT LeftUpLeg
@@ -31,7 +32,7 @@ JOINT LowerBack
 								JOINT RThumb
 """
 
-"""
+
 JOINT_NUM = 31
 
 SDR_L, SDR_R, HIP_L, HIP_R = 18, 25, 2, 7
@@ -49,7 +50,7 @@ JOINT_WEIGHTS = [
     1e-10, 1, 1,
     1e-10, 1, 1, 1, 1e-10, 1e-10, 1e-10,
     1e-10, 1, 1, 1, 1e-10, 1e-10, 1e-10 ]
-"""
+
 
 """
 ROOT
@@ -98,6 +99,7 @@ JOINT Spine1_M
                   JOINT ToesEnd_L
 
 
+"""
 """
 JOINT_NUM = 44
 

@@ -1,3 +1,5 @@
+#define GLM_ENABLE_EXPERIMENTAL
+
 #include <GL/glew.h>
 
 #include <SDL2/SDL.h>
@@ -1037,7 +1039,7 @@ static void reset(glm::vec2 position) {
   ArrayXf Yp = pfnn->Ymean;
 
   glm::vec3 root_position = glm::vec3(position.x, heightmap->sample(position), position.y);
-  glm::mat3 root_rotation = glm::identity<glm::mat3>();
+  glm::mat3 root_rotation = glm::mat3();
   
   for (int i = 0; i < Trajectory::LENGTH; i++) {
     trajectory->positions[i] = root_position;
