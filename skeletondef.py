@@ -107,7 +107,6 @@ SDR_L, SDR_R, HIP_L, HIP_R = 28, 15, 35, 1
 FOOT_L = [41,43]
 FOOT_R = [7,9]
 HEAD = 24
-"""
 FILTER_OUT = ["Cup", "Finger", "Head_rivet", "Teeth", "Tongue", "Eye", "Pupil", "Iris", "muscleDriver"]
 JOINT_SCALE = 1
 
