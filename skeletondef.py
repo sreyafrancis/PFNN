@@ -1,3 +1,4 @@
+"""
 ROOT Hips
 JOINT LHipJoint
 	JOINT LeftUpLeg
@@ -31,7 +32,7 @@ JOINT LowerBack
 								JOINT RThumb
 """
 
-"""
+
 JOINT_NUM = 31
 
 SDR_L, SDR_R, HIP_L, HIP_R = 18, 25, 2, 7
@@ -49,7 +50,7 @@ JOINT_WEIGHTS = [
     1e-10, 1, 1,
     1e-10, 1, 1, 1, 1e-10, 1e-10, 1e-10,
     1e-10, 1, 1, 1, 1e-10, 1e-10, 1e-10 ]
-"""
+
 
 """
 ROOT
@@ -99,12 +100,14 @@ JOINT Spine1_M
 
 
 """
+"""
 JOINT_NUM = 44
 
 SDR_L, SDR_R, HIP_L, HIP_R = 28, 15, 35, 1
 FOOT_L = [41,43]
 FOOT_R = [7,9]
 HEAD = 24
+"""
 FILTER_OUT = ["Cup", "Finger", "Head_rivet", "Teeth", "Tongue", "Eye", "Pupil", "Iris", "muscleDriver"]
 JOINT_SCALE = 1
 
